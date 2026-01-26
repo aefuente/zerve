@@ -37,10 +37,10 @@ pub const Server = struct {
     pub fn listen(self: *Server) !void {
         const epfd = try posix.epoll_create1(0);
         defer posix.close(epfd);
-        var ev: std.os.linux.epoll_event = .{ .events = std.os.linux.EPOLL.IN, .data = .{ .fd = self.socket } };
+        var ev: linux.epoll_event = .{ .events = linux.EPOLL.IN, .data = .{ .fd = self.socket } };
         try posix.epoll_ctl(epfd, linux.EPOLL.CTL_ADD, self.socket, &ev);
 
-        var events: [1024]std.os.linux.epoll_event = undefined;
+        var events: [1024]linux.epoll_event = undefined;
 
         while (true) {
             const nfds = posix.epoll_wait(epfd, &events, -1);
