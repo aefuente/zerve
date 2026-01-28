@@ -11,7 +11,7 @@ pub const HTTPResponse = struct {
     pub fn serialize(self: HTTPResponse, allocator: Allocator) ![]u8 {
         var writer = try std.Io.Writer.Allocating.initCapacity(allocator, 100);
         try writer.writer.print("{s} {d} {s}\r\n", .{ self.Version, self.StatusCode, self.Reason });
-        if (self.Headers) |headers | {
+        if (self.Headers) |headers| {
             if (headers.count() == 0) {
                 try writer.writer.print("\r\n", .{});
             } else {
@@ -60,5 +60,3 @@ pub const SuccessNoData = HTTPResponse{
     .Headers = null,
     .body = null,
 };
-
-

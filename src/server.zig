@@ -24,7 +24,7 @@ pub const Server = struct {
         try posix.setsockopt(sock, posix.SOL.SOCKET, linux.SO.REUSEADDR | linux.SO.REUSEPORT, std.mem.asBytes(&yes));
         try std.posix.bind(sock, &address.any, address.getOsSockLen());
         try posix.listen(sock, 128);
-        return .{ .address = address, .socket = sock, .routes = rts};
+        return .{ .address = address, .socket = sock, .routes = rts };
     }
 
     pub fn listen(self: *Server, allocator: Allocator) !void {
@@ -80,10 +80,11 @@ pub const Server = struct {
                         var writer = file.writer(&socket_buf);
 
                         var caught = false;
-                        for (self.routes.routes.items) |rt | {
+                        for (self.routes.routes.items) |rt| {
                             if (std.mem.eql(u8, rt.Uri, req.RequestUri) and rt.Method == req.Method) {
                                 try rt.f(allocator, req, &writer.interface);
                                 caught = true;
+                                break;
                             }
                         }
 
