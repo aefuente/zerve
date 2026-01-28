@@ -17,58 +17,67 @@ pub const HTTPRequest = struct {
     body: []const u8,
 
     pub fn init(allocator: Allocator, data: []u8) !HTTPRequest {
-        // TOP Phase
-        var first_line_len: usize = 0;
-        while (first_line_len < data.len and data[first_line_len] != '\n') : (first_line_len += 1) {}
+        const sp1 = std.mem.indexOfScalar(u8, data, ' ') orelse { return error.BadRequest;};
+        var sp2 = std.mem.indexOfScalar(u8, data[sp1 + 1..], ' ') orelse {return error.BadRequest;};
+        sp2 += sp1 + 1;
 
-        if (first_line_len == 0) {
-            return error.NoData;
-        }
-
-        var first_it = std.mem.splitAny(u8, data[0 .. first_line_len - 1], " ");
-        const method = first_it.next() orelse return error.MissingMethod;
-        const requestURI = first_it.next() orelse return error.MissingRequestUri;
-        const httpVersion = first_it.next() orelse return error.MissingVersion;
-
+        const requestURI = data[sp1+1 .. sp2];
         var m: HTTPMethod = undefined;
-        if (std.mem.eql(u8, "GET", method)) {
+        if (std.mem.eql(u8, "GET", data[0..sp1])) {
             m = HTTPMethod.GET;
-        } else if (std.mem.eql(u8, "DELETE", method)) {
+        } else if (std.mem.eql(u8, "DELETE", data[0..sp1])) {
             m = HTTPMethod.DELETE;
-        } else if (std.mem.eql(u8, "POST", method)) {
+        } else if (std.mem.eql(u8, "POST", data[0..sp1])) {
             m = HTTPMethod.POST;
-        } else if (std.mem.eql(u8, "PATCH", method)) {
+        } else if (std.mem.eql(u8, "PATCH", data[0..sp1])) {
             m = HTTPMethod.PATCH;
         } else {
             return error.BadMethod;
         }
 
-        const second_line_start = first_line_len + 1;
-        var second_it = std.mem.splitSequence(u8, data[second_line_start..], "\r\n\r\n");
+        var crlf = std.mem.indexOf(u8, data[sp2+1..], "\r\n") orelse {return error.BadRequest;};
+        crlf += sp2 + 1;
 
-        const header_data = second_it.next();
-        var headers = std.StringHashMap([]const u8).init(allocator);
-        const body = second_it.next() orelse return error.NoBody;
-
-        if (header_data) |header| {
-            var header_it = std.mem.splitSequence(u8, header, "\r\n");
-
-            while (header_it.next()) |value| {
-                var index: usize = 0;
-                for (value, 0..) |v, i| {
-                    if (v == ':') {
-                        index = i;
-                        break;
-                    }
-                }
-                if (index == 0) {
-                    return error.BadHeader;
-                }
-                try headers.put(value[0..index], value[index + 2 ..]);
-            }
+        const version = data[sp2+1..crlf];
+        if (! std.mem.eql(u8, version, "HTTP/1.0")) {
+            return error.BadVersion;
         }
 
-        return .{ .Method = m, .RequestUri = requestURI, .Version = httpVersion, .Headers = headers, .body = body };
+        const start = crlf+2;
+        var i = start;
+        var headers = std.StringHashMap([]const u8).init(allocator);
+        while (true) {
+            const line_end = std.mem.indexOf(u8, data[i..], "\r\n") orelse {return error.BadHeader;};
+            if (line_end == 0) {
+                i += 2;
+                break;
+            }
+
+            const line = data[i .. i + line_end];
+            const colon = std.mem.indexOfScalar(u8, line, ':') orelse { return error.BadHeaderLine;};
+            var vstart = colon+1;
+            while (vstart < line.len and (line[vstart] == ' ' or line[vstart] == '\t')) {
+                vstart += 1;
+            }
+
+            const name = line[0..colon];
+            const value = line[vstart..];
+            try headers.put(name, value);
+            i += line_end + 2;
+        }
+
+        var body: []const u8 = undefined;
+        if (headers.get("Content-Length")) |length |{
+            const n = try std.fmt.parseInt(usize, length, 10);
+            if (n > data[i..].len) {
+                return error.TruncatedBody;
+            }
+            body = data[i..n+i];
+        }else {
+            body = data[i..];
+        }
+
+        return .{ .Method = m, .RequestUri = requestURI, .Version = version, .Headers = headers, .body = body };
     }
 
     pub fn print(self: HTTPRequest) void {
