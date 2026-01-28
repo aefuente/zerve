@@ -45,6 +45,14 @@ pub const BadRequest = HTTPResponse{
     .body = null,
 };
 
+pub const NotFound = HTTPResponse{
+    .Version = "HTTP/1.0",
+    .StatusCode = 404,
+    .Reason = "Not Found",
+    .Headers = null,
+    .body = null,
+};
+
 pub const SuccessNoData = HTTPResponse{
     .Version = "HTTP/1.0",
     .StatusCode = 204,

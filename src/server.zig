@@ -1,6 +1,7 @@
 const std = @import("std");
 const response = @import("response.zig");
 const request = @import("request.zig");
+const routes = @import("routes.zig");
 const Address = std.net.Address;
 const posix = std.posix;
 const linux = std.os.linux;
@@ -13,8 +14,9 @@ pub const MAX_REQUEST_LINE = 8192;
 pub const Server = struct {
     address: Address,
     socket: posix.socket_t,
+    routes: routes.Routes,
 
-    pub fn init() !Server {
+    pub fn init(rts: routes.Routes) !Server {
         const address = try Address.parseIp4(ADDRESS, PORT);
         const sock = try posix.socket(posix.AF.INET, posix.SOCK.STREAM | posix.SOCK.NONBLOCK, posix.IPPROTO.TCP);
         errdefer posix.close(sock);
@@ -22,7 +24,7 @@ pub const Server = struct {
         try posix.setsockopt(sock, posix.SOL.SOCKET, linux.SO.REUSEADDR | linux.SO.REUSEPORT, std.mem.asBytes(&yes));
         try std.posix.bind(sock, &address.any, address.getOsSockLen());
         try posix.listen(sock, 128);
-        return .{ .address = address, .socket = sock };
+        return .{ .address = address, .socket = sock, .routes = rts};
     }
 
     pub fn listen(self: *Server, allocator: Allocator) !void {
@@ -72,8 +74,26 @@ pub const Server = struct {
                         const response_data = try resp.serialize(allocator);
                         defer allocator.free(response_data);
 
-                        _ = try posix.write(e.data.fd, response_data);
-                        posix.close(e.data.fd);
+                        var file = std.fs.File{ .handle = e.data.fd };
+                        defer file.close();
+                        var socket_buf: [100]u8 = undefined;
+                        var writer = file.writer(&socket_buf);
+
+                        var caught = false;
+                        for (self.routes.routes.items) |rt | {
+                            if (std.mem.eql(u8, rt.Uri, req.RequestUri) and rt.Method == req.Method) {
+                                try rt.f(allocator, req, &writer.interface);
+                                caught = true;
+                            }
+                        }
+
+                        if (caught) {
+                            continue;
+                        }
+
+                        const notFoundResponse = try response.NotFound.serialize(allocator);
+                        defer allocator.free(notFoundResponse);
+                        _ = try posix.write(e.data.fd, notFoundResponse);
                     }
                 }
             }
